@@ -4,7 +4,7 @@
 
 此版翻译基于[xv6-book-2020-Chinese](https://github.com/pleasewhy/xv6-book-2020-Chinese)修改与校对完成，全部内容转为Markdown格式。
 
-如果您在阅读过程中发现翻译中有任何错误或可以改进的地方，欢迎提出issue或pull request。
+**如果您在阅读过程中发现翻译中有任何错误或可以改进的地方，欢迎提出issue或pull request。**
 
 ## 目录
 1. [操作系统接口（Operating system interfaces）](Chapter-1.md)
