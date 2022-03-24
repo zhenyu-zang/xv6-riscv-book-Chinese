@@ -27,4 +27,4 @@
 
 1. [MIT课程地址](https://pdos.csail.mit.edu/6.828/2020/index.html)
 2. [xv6-riscv Github repository](https://github.com/mit-pdos/xv6-riscv)
-3. [英文原版xv6-riscv-book](https://pdos.csail.mit.edu/6.828/2020/xv6/book-riscv-rev1.pdf)
+3. [英文原版xv6-riscv-book-rev1](https://pdos.csail.mit.edu/6.828/2020/xv6/book-riscv-rev1.pdf)
