@@ -42,7 +42,7 @@ buffer有两个与之相关的状态字段。字段**valid**表示是否包含�
 
 **bget** (kernel/bio.c:59)扫描buffer链表，寻找给定设备号和扇区号来查找缓冲区(kernel/bio.c:65-73)。如果存在，**bget**就会获取该buffer的sleep-lock。然后**bget**返回被锁定的buffer。
 
-如果给定的扇区没有缓存的buffer，**bget**必须生成一个，可能会使用一个存放不同扇区的buffer，它再次扫描buffer链表，寻找没有被使用的buffer(**b->refcnt = 0**)；任何这样的buffer都可以使用。任何这样的buffer都可以使用。bget修改buffer元数据，记录新的设备号和扇区号，并获得其sleep-lock。请注意，**b->valid = 0**可以确保bread从磁盘读取块数据，而不是错误地使用buffer之前的内容。
+如果给定的扇区没有缓存的buffer，**bget**必须生成一个，可能会使用一个存放不同扇区的buffer，它再次扫描buffer链表，寻找没有被使用的buffer(**b->refcnt = 0**)；任何这样的buffer都可以使用。bget修改buffer元数据，记录新的设备号和扇区号，并获得其sleep-lock。请注意，**b->valid = 0**可以确保bread从磁盘读取块数据，而不是错误地使用buffer之前的内容。
 
 请注意，每个磁盘扇区最多只能有一个buffer，以确保写操作对读取者可见，也因为文件系统需要使用buffer上的锁来进行同步。**Bget**通过从第一次循环检查块是否被缓存，第二次循环来生成一个相应的buffer（通过设置**dev**、**blockno**和**refcnt**），在进行这两步操作时，需要一直持有**bache.lock** 。持有**bache.lock**会保证上面两个循环在整体上是原子的。
 
