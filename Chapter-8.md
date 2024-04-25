@@ -156,7 +156,7 @@ inode缓存只缓存被指针指向的inode。它的主要工作其实是同步�
 
 **Iget** (kernel/fs.c:243) 在 inode 缓存中寻找一个带有所需设备号和 inode 号码的active条目 (ip->ref > 0)。如果它找到了，它就返回一个新的对该inode的引用(kernel/fs.c:252-256)。当 **iget** 扫描时，它会记录第一个空槽的位置 (kernel/fs.c:257- 258)，当它需要分配一个缓存条目时，它会使用这个空槽。
 
-在读写inode的元数据或内容之前，代码必须使用**ilock**锁定它。**Ilock**(kernel/fs.c:289)使用sleep-lock来锁定。一旦**ilock**锁定了inode，它就会根据自己的需要从磁盘（更有可能是buffer缓存）读取inode。函数**iunlock** (kernel/fs.c:317)释放睡眠锁，这会唤醒正在等待该睡眠锁的进程。
+在读写inode的元数据或内容之前，代码必须使用**ilock**锁定它。**ilock**(kernel/fs.c:289)使用sleep-lock来锁定。一旦**ilock**锁定了inode，它就会根据自己的需要从磁盘（更有可能是buffer缓存）读取inode。函数**iunlock** (kernel/fs.c:317)释放睡眠锁，这会唤醒正在等待该睡眠锁的进程。
 
 **Iput** (kernel/fs.c:333) 通过递减引用次数 (kernel/fs.c:356) 释放指向inode的指针。如果递减后的引用数为0，inode 缓存中的 就会释放掉该inode 在inode缓存中的槽位，该槽位就可以被其他inode使用。
 
