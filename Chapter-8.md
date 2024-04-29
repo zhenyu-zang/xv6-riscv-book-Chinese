@@ -42,7 +42,7 @@ buffer有两个与之相关的状态字段。字段**valid**表示是否包含�
 
 **bget** (kernel/bio.c:59)扫描buffer链表，寻找给定设备号和扇区号来查找缓冲区(kernel/bio.c:65-73)。如果存在，**bget**就会获取该buffer的sleep-lock。然后**bget**返回被锁定的buffer。
 
-如果给定的扇区没有缓存的buffer，**bget**必须生成一个，可能会使用一个存放不同扇区的buffer，它再次扫描buffer链表，寻找没有被使用的buffer(**b->refcnt = 0**)；任何这样的buffer都可以使用。任何这样的buffer都可以使用。bget修改buffer元数据，记录新的设备号和扇区号，并获得其sleep-lock。请注意，**b->valid = 0**可以确保bread从磁盘读取块数据，而不是错误地使用buffer之前的内容。
+如果给定的扇区没有缓存的buffer，**bget**必须生成一个，可能会使用一个存放不同扇区的buffer，它再次扫描buffer链表，寻找没有被使用的buffer(**b->refcnt = 0**)；任何这样的buffer都可以使用。bget修改buffer元数据，记录新的设备号和扇区号，并获得其sleep-lock。请注意，**b->valid = 0**可以确保bread从磁盘读取块数据，而不是错误地使用buffer之前的内容。
 
 请注意，每个磁盘扇区最多只能有一个buffer，以确保写操作对读取者可见，也因为文件系统需要使用buffer上的锁来进行同步。**Bget**通过从第一次循环检查块是否被缓存，第二次循环来生成一个相应的buffer（通过设置**dev**、**blockno**和**refcnt**），在进行这两步操作时，需要一直持有**bache.lock** 。持有**bache.lock**会保证上面两个循环在整体上是原子的。
 
@@ -52,7 +52,7 @@ buffer有两个与之相关的状态字段。字段**valid**表示是否包含�
 
 一旦**bread**读取了磁盘内容（如果需要的话）并将缓冲区返回给它的调用者，调用者就独占该buffer，可以读取或写入数据。如果调用者修改了buffer，它必须在释放buffer之前调用**bwrite**将修改后的数据写入磁盘。**bwrite** (kernel/bio.c:107)调用**virtio_disk_rw**与磁盘硬件交互。
 
-当调用者处理完一个buffer后，必须调用**brelse**来释放它。(**brelse**这个名字是**b-release**的缩写，虽然很神秘，但值得学习，它起源于Unix，在BSD、Linux和Solaris中也有使用。) **brelse** (kernel/bio.c:117)释放sleep-lock，并将该buffer移动到链表的头部(kernel/bio.c:128-133)。移动buffer会使链表按照buffer最近使用的时间（最近释放）排序，链表中的第一个buffer是最近使用的，最后一个是最早使用的。**bget**中的两个循环利用了这一点，在最坏的情况下，获取已缓存buffer的扫描必须处理整个链表，由于数据局部性，先检查最近使用的缓冲区（从**bcache.head**开始，通过**next**指针）将减少扫描时间。扫描选取可使用buffer的方法是通过从后向前扫描（通过**prev**指针）选取最近使用最少的缓冲区。
+当调用者处理完一个buffer后，必须调用**brelse**来释放它。(**brelse**这个名字是**b-release**的缩写，虽然很神秘，但值得学习，它起源于Unix，在BSD、Linux和Solaris中也有使用。) **brelse** (kernel/bio.c:117)释放sleep-lock，并将该buffer移动到链表的尾部(kernel/bio.c:128-133)。移动buffer会使链表按照buffer最近使用的时间（最近释放）排序，链表中的第一个buffer是最近使用的，最后一个是最早使用的。**bget**中的两个循环利用了这一点，在最坏的情况下，获取已缓存buffer的扫描必须处理整个链表，由于数据局部性，先检查最近使用的缓冲区（从**bcache.head**开始，通过**next**指针）将减少扫描时间。扫描选取可使用buffer的方法是通过从后向前扫描（通过**prev**指针）选取最近使用最少的缓冲区。
 
 ### 8.4 Logging layer
 
@@ -144,8 +144,6 @@ end_op();
 
 内核将在使用的inode保存在内存中；结构体**inode** (kernel/file.h:17)是磁盘**dinode**的拷贝。内核只在有指针指向inode才会储存。**ref**字段为指向inode的指针的数量，如果引用数量减少到零，内核就会从内存中丢弃这个inode。**iget**和**iput**函数引用和释放inode，并修改引用计数。指向inode的指针可以来自文件描述符，当前工作目录，以及短暂的内核代码，如**exec**。
 
-在xv6的inode代码中，有四种锁或类似锁的机制。**icache.lock**保证了一个inode在缓存只有一个副本，以及缓存inode的**ref**字段计数正确。每个内存中的inode都有一个包含sleep-lock的锁字段，它保证了可以独占访问inode的其他字段（如文件长度）以及inode的文件或目录内容块的。一个inode的**ref**如果大于0，则会使系统将该inode保留在缓存中，而不会重用该inode。最后，每个inode都包含一个**nlink**字段(在磁盘上，缓存时会复制到内存中)，该字段统计链接该inode的目录项的数量；如果一个inode的链接数大于零，xv6不会释放它。
-
 在xv6的inode代码中，有四种锁或类似锁的机制。**icache.lock**保证了一个inode在缓存只有一个副本，以及缓存inode的**ref**字段计数正确。每个内存中的inode都有一个包含sleep-lock的锁字段，它保证了可以独占访问inode的其他字段（如文件长度）以及inode的文件或目录内容块的。一个inode的**ref**如果大于0，则会使系统将该inode保留在缓存中，而不会重用该缓存buffer。最后，每个inode都包含一个**nlink**字段(在磁盘上，如果是缓存，则复制在内存中)，该字段统计引用文件的目录项的数量；只有当inode的链接数为零时，xv6才会释放它。
 
 **iget()**返回的**inode**指针在调用iput()之前都是有效的；inode不会被删除，指针所引用的内存也不会被另一个inode重新使用。**iget()**提供了对inode的非独占性访问，因此可以有许多指针指向同一个inode。文件系统代码中的许多部分都依赖于**iget()**的这种行为，既是为了保持对inode的长期引用(如打开的文件和当前目录)，也是为了防止竞争，同时避免在操作多个inode的代码中出现死锁(如路径名查找)。
@@ -158,7 +156,7 @@ inode缓存只缓存被指针指向的inode。它的主要工作其实是同步�
 
 **Iget** (kernel/fs.c:243) 在 inode 缓存中寻找一个带有所需设备号和 inode 号码的active条目 (ip->ref > 0)。如果它找到了，它就返回一个新的对该inode的引用(kernel/fs.c:252-256)。当 **iget** 扫描时，它会记录第一个空槽的位置 (kernel/fs.c:257- 258)，当它需要分配一个缓存条目时，它会使用这个空槽。
 
-在读写inode的元数据或内容之前，代码必须使用**ilock**锁定它。**Ilock**(kernel/fs.c:289)使用sleep-lock来锁定。一旦**ilock**锁定了inode，它就会根据自己的需要从磁盘（更有可能是buffer缓存）读取inode。函数**iunlock** (kernel/fs.c:317)释放睡眠锁，这会唤醒正在等待该睡眠锁的进程。
+在读写inode的元数据或内容之前，代码必须使用**ilock**锁定它。**ilock**(kernel/fs.c:289)使用sleep-lock来锁定。一旦**ilock**锁定了inode，它就会根据自己的需要从磁盘（更有可能是buffer缓存）读取inode。函数**iunlock** (kernel/fs.c:317)释放睡眠锁，这会唤醒正在等待该睡眠锁的进程。
 
 **Iput** (kernel/fs.c:333) 通过递减引用次数 (kernel/fs.c:356) 释放指向inode的指针。如果递减后的引用数为0，inode 缓存中的 就会释放掉该inode 在inode缓存中的槽位，该槽位就可以被其他inode使用。
 
@@ -188,7 +186,7 @@ Xv6没有实现这两种解决方案，这意味着inode可能会在磁盘上被
 
 **itrunc** 释放文件的块，将inode的大小重置为零。**Itrunc** (kernel/fs.c:410) 首先释放***直接块***(kernel/fs.c:416-421)，然后释放***间接块***中指向的块(kernel/fs.c:426- 429)，最后释放***间接块***本身(kernel/fs.c:431-432)。
 
-Bmap 使得 readi 和 writei 可以很容易地获取一个 inode 的数据。Readi (kernel/fs.c:456)首先要确定偏移量和计数没有超过文件末端。从文件超出末尾开始的读会返回一个错误(kernel/fs.c:461-462)，而从文件末尾开始或读取过程中超出末尾的读会不会返回错误，只是返回的字节数会少于请求的字节数(kernel/fs.c:463-464)。
+Bmap 使得 readi 和 writei 可以很容易地获取一个 inode 的数据。Readi (kernel/fs.c:456)首先要确定偏移量和计数没有超过文件末端。从文件超出末尾开始的读会返回一个错误(kernel/fs.c:461-462)，而从文件末尾开始或读取过程中超出末尾的读不会返回错误，只是返回的字节数会少于请求的字节数(kernel/fs.c:463-464)。
 
 主循环会把文件中的每一个块的数据复制到**dst**中(kernel/fs.c:466-474)。**writei** (kernel/fs.c:483)与**readi**相同，但有三个不同：（1）、从文件末尾开始或越过文件末尾的写入会使文件增长，但不会超过文件的最大长度(kernel/fs.c:490-491)；（2）、循环将数据复制到缓冲区而不是**out**(kernel/fs.c:36)；（3）、如果写使文件增长了，**writi**必须更新它的大小(kernel/fs.c:504-511)。
 
@@ -198,15 +196,15 @@ Bmap 使得 readi 和 writei 可以很容易地获取一个 inode 的数据。Re
 
 ### 8.11 Code: directory layer
 
-目录的实现机制和文件很类似。它的**inode**类型是**T_DIR**，它的数据是一个目录项的序列。每个条目是一个结构体**dirent**(kernel/fs.h:56)，它包含一个名称和一个inode号。名称最多包含**DIRSIZ**(14)个字符，较短的名称以**NULL**(0)结束。inode号为0的目录项是空闲的。
+目录的实现机制和文件很类似。它的**inode**类型是**T_DIR**，它的数据是一个目录项的序列。每个条目是一个结构体**dirent**(kernel/fs.h:56)，它包含一个名称和一个**inode**号。名称最多包含**DIRSIZ**(14)个字符，较短的名称以**NULL**(0)结束。**inode**号为0的目录项是空闲的。
 
-函数**dirlookup** (kernel/fs.c:527)在一个目录中搜索一个带有给定名称的条目。如果找到了，它返回一个指向相应未上锁的inode的指针，并将***poff**设置为目录中条目的字节偏移量，以便调用者想要编辑它。如果dirlookup找到一个对应名称的条目，则更新*poff，并返回一个通过iget获得的未被锁定的inode。Dirlookup是iget返回未锁定的inode的原因。调用者已经锁定了dp，所以如果查找的是 **“.”** ，当前目录的别名，在返回之前试图锁定inode，就会试图重新锁定dp而死锁。(还有更复杂的死锁情况，涉及到多个进程和”**..”**，父目录的别名；”**.”**不是唯一的问题。) 调用者可以先解锁dp，然后再锁定ip，保证一次只持有一个锁。
+函数**dirlookup** (kernel/fs.c:527)在一个目录中搜索一个带有给定名称的条目。如果找到了，它返回一个指向相应未上锁的**inode**的指针，并将***poff**设置为目录中条目的字节偏移量，以便调用者想要编辑它。如果**dirlookup**找到一个对应名称的条目，则更新**poff**，并返回一个通过**iget**获得的未被锁定的**inode**。**dirlookup**是**iget**返回未锁定的**inode**的原因。调用者已经锁定了**dp**，所以如果查找的是 **“.”** ，当前目录的别名，在返回之前试图锁定**inode**，就会试图重新锁定**dp**而死锁。(还有更复杂的死锁情况，涉及到多个进程和”**..”**，父目录的别名；”**.”**不是唯一的问题。) 调用者可以先解锁**dp**，然后再锁定**ip**，保证一次只持有一个锁。
 
-函数**dirlink** (kernel/fs.c:554)会在当前目录dp中创建一个新的目录项，通过给定的名称和inode号。如果名称已经存在，dirlink 将返回一个错误(kernel/fs.c:560- 564)。主循环读取目录项，寻找一个未使用的条目。当它找到一个时，它会提前跳出循环 (kernel/fs.c:538-539)，并将 **off** 设置为该可用条目的偏移量。否则，循环结束时，将**off**设置为**dp->size**。不管是哪种方式，**dirlink**都会在偏移量**off**的位置添加一个新的条目到目录中(kernel/fs.c:574-577)。
+函数**dirlink** (kernel/fs.c:554)会在当前目录**dp**中创建一个新的目录项，通过给定的名称和**inode**号。如果名称已经存在，**dirlink** 将返回一个错误(kernel/fs.c:560- 564)。主循环读取目录项，寻找一个未使用的条目。当它找到一个时，它会提前跳出循环 (kernel/fs.c:538-539)，并将 **off** 设置为该可用条目的偏移量。否则，循环结束时，将**off**设置为**dp->size**。不管是哪种方式，**dirlink**都会在偏移量**off**的位置添加一个新的条目到目录中(kernel/fs.c:574-577)。
 
 ### 8.12 Code: Path names
 
-查找路径名会对每一个节点调用一次**dirlookup**。Namei (kernel/fs.c:661) 解析路径并返回相应的inode。函数**nameiparent**是**namei**的一个变种：它返回相应inode的父目录inode，并将最后一个元素复制到**name**中。这两个函数都通过调用**namex**来实现。
+查找路径名会对每一个节点调用一次**dirlookup**。**namei**(kernel/fs.c:661) 解析路径并返回相应的**inode**。函数**nameiparent**是**namei**的一个变种：它返回相应**inode**的父目录**inode**，并将最后一个元素复制到**name**中。这两个函数都通过调用**namex**来实现。
 
 **Namex** (kernel/fs.c:626)首先确定路径解析从哪里开始。如果路径以斜线开头，则从根目录开始解析；否则，从当前目录开始解析(kernel/fs.c:630-633)。然后它使用 **skipelem** 来遍历路径中的每个元素(kernel/fs.c:635)。循环的每次迭代都必须在当前inode **ip**中查找**name**。迭代的开始是锁定**ip**并检查它是否是一个目录。如果不是，查找就会失败(kernel/fs.c:636-640)。(锁定**ip**是必要的，不是因为**ip->type**可能会改变，而是因为在**ilock**运行之前，不能保证ip->type已经从磁盘载入)。如果调用的是**nameiparent**，而且这是最后一个路径元素，按照之前**nameiparent**的定义，循环应该提前停止，最后一个路径元素已经被复制到name中，所以**namex**只需要返回解锁的ip(kernel/fs.c:641-645)。最后，循环使用**dirlookup**查找路径元素，并通过设置**ip** = **next**为下一次迭代做准备(kernel/fs.c:646-651)。当循环遍历完路径元素时，它返回**ip**。
 
@@ -226,7 +224,7 @@ Xv6给每个进程提供了自己的打开文件表，或者说文件描述符�
 
 系统中所有打开的文件都保存在一个全局文件表中，即**ftable**。文件表的功能有: 分配文件(**filealloc**)、创建重复引用(**fileup**)、释放引用(**fileclose**)、读写数据(**fileeread**和**filewrite**)。
 
-前三个函数应该比较熟悉了,就不过多的讨论。**Filealloc** (kernel/file.c:30) 扫描文件表，寻找一个未引用的文件 (f->ref == 0)，并返回一个新的引用；**fileup** (kernel/file.c:48) 增加引用计数；**fileclose** (kernel/file.c:60) 减少引用计数。当一个文件的引用数达到0时，**fileclose**会根据类型释放底层的管道或inode。
+前三个函数应该比较熟悉了,就不过多的讨论。**Filealloc** (kernel/file.c:30) 扫描文件表，寻找一个未引用的文件 (f->ref == 0)，并返回一个新的引用；**filedup** (kernel/file.c:48) 增加引用计数；**fileclose** (kernel/file.c:60) 减少引用计数。当一个文件的引用数达到0时，**fileclose**会根据类型释放底层的管道或inode。
 
 函数**filestat**、**fileread**和**filewrite**实现了对文件的统计、读和写操作。Filestat(kernel/file.c:88)只允许对inodes进行操作，并调用**stati**。**Fileread**和**filewrite**首先检查打开模式是否允许该操作，然后再调用管道或inode的相关实现。如果文件代表一个inode，**fileread**和**filewrite**使用I/O偏移量作为本次操作的偏移量，然后前移偏移量（kernel/file.c:122- 123）（kernel/file.c:153-154）。Pipes没有偏移量的概念。回想一下inode的函数需要调用者处理锁的相关操作（kernel/file.c:94-96）（kernel/file.c:121-124）（kernel/file.c:163-166）。inode加锁附带了一个不错的作用，那就是读写偏移量是原子式更新的，这样多个进程写一个文件时，自己写的数据就不会被其他进程所覆盖，尽管他们的写入可能最终会交错进行。
 
