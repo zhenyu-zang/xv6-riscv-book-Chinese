@@ -59,7 +59,7 @@ int* pid = fork();
 if (pid > 0)
 {
 	printf("parent: child=%d\n", pid);
-	pid = wait((*int* *)0);
+	pid = wait((int *)0);
 	printf("child %d is done\n", pid);
 }
 else if (pid == 0)
@@ -93,7 +93,7 @@ child 1234 is done
 **exec**系统调用使用新内存映像来替换进程的内存， 新内存映像从文件系统中的文件中进行读取。这个文件必须有特定的格式，它指定了文件中哪部分存放指令，哪部分是数据，在哪条指令开始，等等。xv6使用ELF格式，第3章将详细讨论。当**exec**成功时，它并不返回到调用程序；相反，从文件中加载的指令在ELF头声明的入口点开始执行。**exec**需要两个参数：包含可执行文件的文件名和一个字符串参数数组。例如：
 
 ``` c
-char* *argv[3];
+char *argv[3];
 argv[0] = "echo";
 argv[1] = "hello";
 argv[2] = 0;
